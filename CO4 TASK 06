@@ -1,0 +1,185 @@
+#include <stdio.h>
+#include <string.h>
+
+#define MAX_ITEMS 50
+#define MAX_COMBO_ITEMS 3
+
+typedef struct {
+    int day;
+    int month;
+    int year;
+} Date;
+
+typedef struct {
+    int hour;
+    int minute;
+} TimeHM;
+
+typedef enum {
+    ITEM_PACKAGED,
+    ITEM_COOKED,
+    ITEM_COMBO
+} ItemKind;
+
+typedef struct {
+    Date expiry;
+} PackagedInfo;
+
+typedef struct {
+    TimeHM prepared_at;
+} CookedInfo;
+
+typedef struct {
+    int item_ids[MAX_COMBO_ITEMS];
+    int count;
+} ComboInfo;
+
+typedef struct {
+    int id;
+    char name[32];
+    float price;
+    int stock;
+    ItemKind kind;
+    union {
+        PackagedInfo packaged;
+        CookedInfo cooked;
+        ComboInfo combo;
+    } details;
+    int units_sold;
+    float revenue;
+} CanteenItem;
+
+/* Convert YYYYMMDD integer for easy date comparisons */
+static long date_to_num(Date d) {
+    return (long)d.year * 10000L + (long)d.month * 100L + (long)d.day;
+}
+
+/* Simple day difference assuming 30-day months for quick demo checks */
+static int days_between(Date today, Date exp) {
+    long t_days = (long)today.year * 365L + (long)today.month * 30L + today.day;
+    long e_days = (long)exp.year * 365L + (long)exp.month * 30L + exp.day;
+    return (int)(e_days - t_days);
+}
+
+static int find_item_index(const CanteenItem items[], int n, int id) {
+    for (int i = 0; i < n; i++) {
+        if (items[i].id == id) return i;
+    }
+    return -1;
+}
+
+int record_sale(CanteenItem items[], int n, int item_id, int qty) {
+    if (qty <= 0) {
+        printf("[Sale Rejected] Invalid quantity %d for ID %d.\n", qty, item_id);
+        return 0;
+    }
+    int idx = find_item_index(items, n, item_id);
+    if (idx < 0) {
+        printf("[Sale Rejected] Item ID %d not found.\n", item_id);
+        return 0;
+    }
+
+    CanteenItem *it = &items[idx];
+    if (it->stock < qty) {
+        printf("[Sale Rejected] Insufficient stock for '%s' (requested %d, available %d).\n",
+               it->name, qty, it->stock);
+        return 0;
+    }
+
+    /* If combo, verify component stock first */
+    if (it->kind == ITEM_COMBO) {
+        for (int c = 0; c < it->details.combo.count; c++) {
+            int comp_idx = find_item_index(items, n, it->details.combo.item_ids[c]);
+            if (comp_idx < 0 || items[comp_idx].stock < qty) {
+                printf("[Sale Rejected] Insufficient component stock for combo '%s'.\n", it->name);
+                return 0;
+            }
+        }
+        for (int c = 0; c < it->details.combo.count; c++) {
+            int comp_idx = find_item_index(items, n, it->details.combo.item_ids[c]);
+            items[comp_idx].stock -= qty;
+        }
+    }
+
+    it->stock -= qty;
+    it->units_sold += qty;
+    it->revenue += it->price * (float)qty;
+    printf("[Sale Recorded] %d x '%s' -> Revenue +%.2f\n", qty, it->name, it->price * (float)qty);
+    return 1;
+}
+
+void warn_expiring(const CanteenItem items[], int n, Date today) {
+    printf("\n--- Expiry Warnings (Within 2 Days of %02d/%02d/%04d) ---\n",
+           today.day, today.month, today.year);
+    int found = 0;
+    for (int i = 0; i < n; i++) {
+        if (items[i].kind == ITEM_PACKAGED) {
+            int diff = days_between(today, items[i].details.packaged.expiry);
+            if (diff <= 2) {
+                Date ex = items[i].details.packaged.expiry;
+                printf("WARNING: '%s' (ID %d) expires on %02d/%02d/%04d (%d day(s) left).\n",
+                       items[i].name, items[i].id, ex.day, ex.month, ex.year, diff);
+                found = 1;
+            }
+        }
+    }
+    if (!found) {
+        printf("No packaged items expiring within 2 days.\n");
+    }
+}
+
+void print_sorted_summary(CanteenItem items[], int n) {
+    CanteenItem copy[MAX_ITEMS];
+    memcpy(copy, items, (size_t)n * sizeof(CanteenItem));
+
+    for (int i = 0; i < n - 1; i++) {
+        int max_idx = i;
+        for (int j = i + 1; j < n; j++) {
+            if (copy[j].revenue > copy[max_idx].revenue) {
+                max_idx = j;
+            }
+        }
+        if (max_idx != i) {
+            CanteenItem tmp = copy[i];
+            copy[i] = copy[max_idx];
+            copy[max_idx] = tmp;
+        }
+    }
+
+    printf("\n--- Day's Bill Summary (Sorted by Revenue) ---\n");
+    printf("%-4s %-18s %-8s %-7s %-10s\n", "ID", "Item", "Sold", "Stock", "Revenue");
+    float total = 0.0f;
+    for (int i = 0; i < n; i++) {
+        printf("%-4d %-18s %-8d %-7d %.2f\n",
+               copy[i].id, copy[i].name, copy[i].units_sold, copy[i].stock, copy[i].revenue);
+        total += copy[i].revenue;
+    }
+    printf("Total Revenue: %.2f\n", total);
+}
+
+int main(void) {
+    Date today = {20, 11, 2026};
+    CanteenItem menu[MAX_ITEMS] = {
+        {1, "Veg Puff",     20.0f, 15, ITEM_PACKAGED, {.packaged = {{21, 11, 2026}}}},
+        {2, "Masala Dosa",  45.0f, 10, ITEM_COOKED,   {.cooked = {{8, 30}}}},
+        {3, "Juice Box",    25.0f,  5, ITEM_PACKAGED, {.packaged = {{28, 11, 2026}}}},
+        {4, "Breakfast Combo", 55.0f, 8, ITEM_COMBO, {.combo = {{1, 3, 0}, 2}}}
+    };
+    int count = 4;
+
+    /* Normal sales */
+    record_sale(menu, count, 2, 4);
+    record_sale(menu, count, 4, 2);
+
+    /* Sale exceeding stock */
+    record_sale(menu, count, 3, 20);
+
+    /* Expiring item check */
+    warn_expiring(menu, count, today);
+
+    /* Sorted summary */
+    print_sorted_summary(menu, count);
+
+    (void)date_to_num;
+    return 0;
+}
