@@ -1,0 +1,63 @@
+#include <stdio.h>
+#include <string.h>
+
+#define MAX_PATIENTS 100
+
+typedef struct {
+    int day;
+    int month;
+    int year;
+} Date;
+
+typedef struct {
+    int systolic;
+    int diastolic;
+} BloodPressure;
+
+typedef struct {
+    char name[40];
+    int age;
+    char phone[15];       /* supports '+' / leading zero / null terminator */
+    BloodPressure bp;
+    Date visitDate;
+} Patient;
+
+typedef struct {
+    Patient records[MAX_PATIENTS];
+    int count;
+} PatientRegister;
+
+int addPatient(PatientRegister *reg, const Patient *p) {
+    if (reg == NULL || p == NULL) {
+        return 0;
+    }
+    if (reg->count >= MAX_PATIENTS) {
+        printf("Register full! Cannot add patient %s.\n", p->name);
+        return 0;
+    }
+    reg->records[reg->count] = *p;
+    reg->count++;
+    return 1;
+}
+
+void printPatient(const Patient *p) {
+    printf("Name: %-15s | Age: %2d | Phone: %-12s | BP: %3d/%-3d | Date: %02d/%02d/%04d\n",
+           p->name, p->age, p->phone,
+           p->bp.systolic, p->bp.diastolic,
+           p->visitDate.day, p->visitDate.month, p->visitDate.year);
+}
+
+int main(void) {
+    PatientRegister reg = { .count = 0 };
+
+    Patient p1 = { "Anitha R", 34, "9876543210", {120, 80}, {20, 11, 2026} };
+    Patient p2 = { "Karthik S", 58, "9840112233", {145, 92}, {20, 11, 2026} };
+
+    addPatient(&reg, &p1);
+    addPatient(&reg, &p2);
+
+    for (int i = 0; i < reg.count; i++) {
+        printPatient(&reg.records[i]);
+    }
+    return 0;
+}
