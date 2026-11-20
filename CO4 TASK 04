@@ -1,0 +1,43 @@
+#include <stdio.h>
+
+struct account {
+    int number;
+    float balance;
+};
+
+/* Defective version (pass by value + prints copy's address) */
+void addInterest_buggy(struct account a, float rate) {
+    printf("  [buggy fn] address of parameter copy 'a': %p\n", (void *)&a);
+    a.balance = a.balance + a.balance * rate / 100.0f;
+}
+
+/* Repaired version (pass by pointer + arrow operator) */
+void addInterest(struct account *a, float rate) {
+    if (a == NULL) return;
+    a->balance = a->balance + a->balance * rate / 100.0f;
+}
+
+int main(void) {
+    struct account list[3] = {
+        {101, 5000.0f},
+        {102, 12000.0f},
+        {103, 800.0f}
+    };
+    struct account *p = list;
+
+    printf("Proof of pass-by-value defect on list[0] (%p):\n", (void *)&list[0]);
+    addInterest_buggy(list[0], 4.0f);
+    printf("  After buggy call, list[0].balance is still %.2f\n\n", list[0].balance);
+
+    /* Repaired loop using pointer arithmetic */
+    for (int i = 0; i < 3; i++) {
+        addInterest(p + i, 4.0f);
+    }
+
+    printf("Updated balances:\n");
+    for (int i = 0; i < 3; i++) {
+        printf("%d %f\n", (p + i)->number, (p + i)->balance);
+    }
+
+    return 0;
+}
